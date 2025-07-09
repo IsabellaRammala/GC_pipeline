@@ -2,13 +2,13 @@
 #irammala@mpif-bonn.mpg.de
 
 import os
-import generatejobs
+import generatejobs as gen
 import glob
 
 # ----------------------------------------------------------------------
 #           READ THE CONFIG FILE 
 # ----------------------------------------------------------------------
-params = generatejobs.read_config("config.ini")
+params = gen.read_config("config.ini")
 
 # ----------------------------------------------------------------------
 #           READ THE DDPLAN FILE
@@ -26,34 +26,38 @@ params = generatejobs.read_config("config.ini")
 #             dm_ranges.append((dm_start, dm_end))
 
 # ----------------------------------------------------------------------
-#           COPY DATA TO PROCESSING NODE (HEAVY JOB>> NEEDS TO BE A SLURM JOB >> HOW TO GET THE OUTPUTS BACK HERE?? A SETUP SCRIPT WITH PROJECT INFO THAT CAN BE READ HERE?)
+#           COPY DATA TO PROCESSING NODE 
 # ----------------------------------------------------------------------
-make_base_dir_command, copy_data_command, copy_pipeline_command, copy_singularity_command, make_results_dir_command, tmp_base_path, tmp_data_path, tmp_pipeline_path, tmp_singularity_path = generatejobs.generate_copy_data(origin_dir=params["data_dir"],
+copy_data_commands, peasoup_commands, tmp_base_path, tmp_data_path, tmp_pipeline_path, tmp_singularity_path, tmp_results_path = gen.generate_copy_data(params, origin_dir=params["data_dir"],
 																					results_dir=params["results_dir"],
 																					epoch=params["epoch"], 
 																					user_id=params["user"], 
 																					pipeline_path=params["pipeline_dir"], 
 																					singularity_path=params["peasoup_singularity"], 
-																					direction="to_node")
+																					)
+gen.write_slurm_copy_data(copy_data_commands, params, beam, results_dir, scripts_path)
+# gen.write_slurm_search_script
 
-# # --------------------------------------------------------------------
-#           GET THE BEAMS & WRITE SEARCH COMMAND
-# ----------------------------------------------------------------------
-tmp_scripts_path = os.path.join(tmp_base_path, "SCRIPTS")
-os.makedirs(tmp_scripts_path)
+# copy_results_commands = generatejobs.generate_copy_results(tmp_results_dir=tmp_results_path, results_dir=params["results_dir"])
 
-beam_dirs = sorted(glob.glob(os.path.join(tmp_data_path, "cfbf*")))
+# # # --------------------------------------------------------------------
+# #           GET THE BEAMS & WRITE SEARCH COMMAND
+# # ----------------------------------------------------------------------
+
+# beam_dirs = sorted(glob.glob(os.path.join(tmp_data_path, "cfbf*")))
+# print (beam_dir)
 for beam_dir in beam_dirs:
 	syscall = []
 	beam = os.path.basename(beam_dir)
 	filterbanks = sorted(glob.glob(os.path.join(beam_dir, "*.fil")))
 	for fil_file in filterbanks:
-		# for dm_start, dm_end in dm_ranges:
-		# 	params["dm_start"] = dm_start
-		# 	params["dm_end"] = dm_end
+		for dm_start, dm_end in dm_ranges:
+			params["dm_start"] = dm_start
+			params["dm_end"] = dm_end
 		peasoup_command = generatejobs.generate_peasoup_command(tmp_base_path, tmp_data_path, tmp_pipeline_path, tmp_singularity_path, tmp_results_path, params, fil_file)
 		syscall.append(peasoup_command)
-	# generatejobs.write_slurm_search_script(beam, syscall, params, tmp_results_path, tmp_scripts_path)
+		print(syscall)
+generatejobs.write_slurm_search_script(beam, peasoup_command, copy_commands, params, results_dir, scripts_path)
 # ----------------------------------------------------------------------
 #           WRITE THE SLURM SUBMISSION SCRIPS
 # ----------------------------------------------------------------------
