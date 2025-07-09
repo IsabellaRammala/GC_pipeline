@@ -62,50 +62,8 @@ def read_config(config_file):
     }
     return params
 
-def generate_copy_data(origin_dir, results_dir, epoch, user_id, pipeline_path, singularity_path, direction="to_node"):
+def setup_directories(params, results_dir, epoch, user_id, pipeline_path, singularity_path):
     """
-    Copy the data, pipeline, and containmer to (direction="to_node") / from (direction="from_node") processing node )
-
-    returns: tmp_data_path, tmp_pipeline_path, tmp_singularity_path
-    """
-    tmp_base = os.path.join("/tmp", user_id)
-    destination_dir_name = "DATA"
-    tmp_data_path = os.path.join(tmp_base, destination_dir_name, epoch)
-    tmp_pipeline_path = os.path.join(tmp_base, os.path.basename(pipeline_path))
-    tmp_singularity_path = os.path.join(tmp_base, os.path.basename(singularity_path))
-    tmp_results_path = os.path.join(tmp_base, ("RESULTS"))
-    
-    data_path = os.path.join(origin_dir, epoch)
-    if direction == "to_node":
-        if not os.path.exists(origin_dir):
-            raise FileNotFoundError(f"Data directory not found: {origin_dir}")
-        
-        make_base_dir_command = f"mkdir {tmp_base}"
-        if os.path.exists(tmp_data_path):
-            print(f"[INFO] Data already exists in /tmp: {tmp_data_path}")
-        else:
-            print(f"[INFO] Copying data from {data_path} to {tmp_data_path} ...")
-            copy_data_command = f"cp -r {data_path} {tmp_data_path}"
-            copy_pipeline_command = f"cp -r {pipeline_path} {tmp_pipeline_path}"
-            copy_singularity_command = f"cp {singularity_path} {tmp_singularity_path}"
-            make_results_dir_command = f"mkdir {tmp_results_path}"
-            print(f"[INFO] Copy complete.")
-            print(f"{make_base_dir_command}, {make_results_dir_command}, {copy_data_command}, {copy_pipeline_command}, {copy_singularity_command}")
-            return make_base_dir_command, copy_data_command, copy_pipeline_command, copy_singularity_command, make_results_dir_command, tmp_base, tmp_data_path, tmp_pipeline_path, tmp_singularity_path
-
-    elif direction == "from_node":
-        if not os.path.exists(tmp_data_path):
-            raise FileNotFoundError(f"Temporary data directory not found: {tmp_data_path}")
-
-        print(f"[INFO] Restoring data from {tmp_data_path} to {results_dir} ...")
-        shutil.copytree(tmp_data_path, results_dir)
-
-        print(f"[INFO] Copy from node complete.")
-
-    else:
-        raise ValueError(f"Invalid direction: {direction}. Must be 'to_node' or 'from_node'.")
-
-    # return tmp_base, tmp_data_path, tmp_pipeline_path, tmp_singularity_path, tmp_results_path
 
 def find_filterbank_files(directory):
     """
@@ -115,24 +73,12 @@ def find_filterbank_files(directory):
         raise IOError("Directory {} not found.".format(directory))
     
     filterbank_files = [os.path.join(directory, f) for f in os.listdir(directory) if f.endswith(".fil")]
+    print (filterbank_files)
     
     if not filterbank_files:
         raise IOError("No filterbank files found in directory {}.".format(directory))
     
     return filterbank_files
-
-# def presto_readfile(params, filterbank_file):
-#     """
-#     Use presto to read the filterbank file and save the header info into a file
-#     """
-#     current_dir = os.getcwd()
-
-#     command = (
-#         "singularity exec -B {current_dir},{results_dir},{scratch_dir},{filterbank_dir} {singularity_image} readfile {filterbank_file}"        
-#     ).format(
-#         current_dir=current_dir,
-#         results_dir=params[""]
-#     )
 
 def generate_peasoup_command(working_dir, data_path, pipeline_path, singularity_path, results_dir, params, filterbank_file):
     """
@@ -162,10 +108,113 @@ def generate_peasoup_command(working_dir, data_path, pipeline_path, singularity_
 
     if params["parallel"]:
         command += "-p"
-    
+    print(command)
     return command
 
-def write_slurm_search_script(beam, peasoup_command, copy_commands, params, results_dir, scripts_path):
+def generate_copy_data(params, origin_dir, results_dir, epoch, user_id, pipeline_path, singularity_path):
+    """
+    Copy the data, pipeline, and containmer to  processing node )
+    """
+    tmp_base = os.path.join("/tmp", user_id)
+    destination_dir_name = "DATA"
+    tmp_data_path = os.path.join(tmp_base, destination_dir_name, epoch)
+    tmp_pipeline_path = os.path.join(tmp_base, os.path.basename(pipeline_path))
+    tmp_singularity_path = os.path.join(tmp_base, os.path.basename(singularity_path))
+    tmp_results_path = os.path.join(tmp_base, ("RESULTS"))
+    tmp_scripts_path = os.path.join(tmp_base, ("SCRIPTS"))
+    
+    data_path = os.path.join(origin_dir, epoch)
+
+    if not os.path.exists(origin_dir):
+        raise FileNotFoundError(f"Data directory not found: {origin_dir}")
+    
+    if os.path.exists(tmp_data_path):
+        print(f"[INFO] Data already exists in /tmp: {tmp_data_path}")
+        copy_commands = []
+    else:
+        copy_commands = [
+            f"mkdir {tmp_base}",
+            f"mkdir {tmp_base}/SCRIPTS",
+            f"mkdir {tmp_results_path}", 
+            f"cp -r {data_path} {tmp_data_path}",
+            f"cp -r {pipeline_path} {tmp_pipeline_path}",
+            f"cp {singularity_path} {tmp_singularity_path}",
+        ]
+        # print(f"[INFO] Will run copy commands to /tmp.")
+        peasoup_commands = []
+        if os.path.exists(tmp_data_path):
+            filterbank_files = find_filterbank_files(tmp_data_path)
+            for fil in filterbank_files:
+                cmd = generate_peasoup_command(
+                        working_dir=tmp_base,
+                        data_path=tmp_data_path,
+                        pipeline_path=tmp_pipeline_path,
+                        singularity_path=tmp_singularity_path,
+                        results_dir=tmp_results_path,
+                        params=params,
+                        filterbank_file=fil
+                )
+            peasoup_commands.append(cmd)
+    return copy_commands, peasoup_commands, tmp_base, tmp_data_path, tmp_pipeline_path, tmp_singularity_path, tmp_results_path
+    
+def generate_copy_results(tmp_results_dir, results_dir):
+    """
+    Copy the results back to /scratch
+    """
+    # if not os.path.exists(tmp_results_dir):
+    #     raise FileNotFoundError(f"Temporary data directory not found: {tmp_results_dir}")
+    print(f"[INFO] Restoring data from {tmp_results_dir} to {results_dir} ...")
+    command = [f"cp -r {tmp_results_dir} {results_dir}"]
+    print(f"[INFO] Copy of results from node complete.")
+    return command
+
+# def presto_readfile(params, filterbank_file):
+#     """
+#     Use presto to read the filterbank file and save the header info into a file
+#     """
+#     current_dir = os.getcwd()
+
+#     command = (
+#         "singularity exec -B {current_dir},{results_dir},{scratch_dir},{filterbank_dir} {singularity_image} readfile {filterbank_file}"        
+#     ).format(
+#         current_dir=current_dir,
+#         results_dir=params[""]
+#     )
+def write_slurm_copy_data(copy_commands, params, beam, results_dir, scripts_path):
+    """
+    Writes the slurm sript to copy data to /tmp
+    """
+    script_name = "copy_data_to_node_{}.sh".format(beam)
+    job_name = script_name.split('.')[0]
+    tmp_script_path = os.path.join(scripts_path, script_name)
+
+    slurm_header = """#!/usr/bin/env bash
+        #SBATCH --job-name={job_name}
+        #SBATCH --partition={partition}
+        #SBATCH --time={cpu_time}
+        #SBATCH --cpus-per-task={cpus}
+        #SBATCH --output={results_dir}/{job_name}_%j.out
+        #SBATCH --error={results_dir}/{job_name}_%j.err
+        """.format(job_name=job_name,
+                results_dir=results_dir,
+                partition=params['partition'],
+                cpu_time=params['time'],
+                cpus=params['cpus'], 
+                )
+    with open(tmp_script_path, "w") as f:
+        f.write(slurm_header)
+        f.write("\n")
+
+        for command in copy_commands:
+            f.write(command + "\n")
+        f.write("\n")
+    os.chmod(tmp_script_path, 0o755)
+    print("SLURM search script written to {}/{}".format(tmp_script_path, script_name))
+
+
+
+
+def write_slurm_search_beam(beam, peasoup_command, copy_commands, params, results_dir, scripts_path):
     """
     Writes the SLURM job script for submitting the PEASOUP jobs.
     """
@@ -173,6 +222,7 @@ def write_slurm_search_script(beam, peasoup_command, copy_commands, params, resu
     script_name = "peasoup_search_{}.sh".format(beam)
     job_name = script_name.split('.')[0]
     tmp_script_path = os.path.join(scripts_path, script_name)
+
     slurm_header = """#!/usr/bin/env bash
 #SBATCH --job-name={job_name}
 #SBATCH --partition={partition}
@@ -196,6 +246,7 @@ start=$(date +%s)
     with open(tmp_script_path, "w") as f:
         f.write(slurm_header)
         f.write("\n")
+        
         for command in peasoup_command:
             f.write(command + "\n")
             filterbank = os.path.basename(command.split("-i")[1].split()[0])
@@ -203,8 +254,8 @@ start=$(date +%s)
             f.write('\nend=$(date +%s)')
             f.write('\nruntime=$((end - start))')
             f.write('\necho "Total runtime: ${runtime} seconds"')
-            os.chmod(tmp_script_path, 0o755)
-    print("SLURM script written to {}".format(tmp_script_path))
+    os.chmod(tmp_script_path, 0o755)
+    print("SLURM search script written to {}/{}".format(tmp_script_path, script_name))
 
 def write_batch_submission_script(data_path, slurm_scripts_dir):
     """
