@@ -5,59 +5,68 @@ import os
 import generatejobs as gen
 import glob
 
-# ----------------------------------------------------------------------
-#           READ THE CONFIG FILE 
-# ----------------------------------------------------------------------
+# --------------------------------------------------------------------------------
+#           READ THE CONFIG FILE & SETUP DIRECTORIES
+# --------------------------------------------------------------------------------
 params = gen.read_config("config.ini")
+directories = gen.setup_directories(params['epoch'], 
+									params['user'], 
+									params['pipeline_dir'],
+									params['singularity_dir']
+									)
+tmp_base, tmp_data_path, tmp_results_path, tmp_scripts_path, tmp_singularity_path, tmp_pipeline_path, scripts_path = directories
 
-# ----------------------------------------------------------------------
-#           READ THE DDPLAN FILE
-# ----------------------------------------------------------------------
-# ddplan_file = "ddplan.txt"
-# dm_ranges = []
+tmp_results_path10 = os.path.join(tmp_results_path, "search10min")
+tmp_results_path10 = os.path.join(tmp_results_path, "search20min")
+# for dir in directories:
+# 	print (dir)
+# print (f"ATTTT!!! {glob.glob(os.path.join(tmp_singularity_path, '*'))}")
 
-# with open(ddplan_file, "r") as f:
-#     next(f)
-#     for line in f:
-#         parts = line.split()
-#         if len(parts) >= 2:
-#             dm_start = float(parts[0])
-#             dm_end = float(parts[1])
-#             dm_ranges.append((dm_start, dm_end))
+# --------------------------------------------------------------------------------
+#          SLURM COPY DATA TO PROCESSING NODE 
+# --------------------------------------------------------------------------------
+copy_commands = gen.copy_data(tmp_base, 
+								tmp_data_path, 
+								tmp_results_path, 
+								data_path=os.path.join(params['data_dir'],params['epoch']),
+								pipeline_path=params['pipeline_dir'], 
+								singularity_path=params['singularity_dir']
+								)
+# WRITE THE SLURM SCRIPT TO COPY DATA:
+gen.write_slurm_copy_data(copy_commands, params, tmp_results_path, scripts_path)
+# COPY PRETTY SLOW (TIME for 2 beams real:7m37.617s, user:0m0.021s, sys:7m12.520s)
+# ESTIMATING ~4 hours for the 64 beams!!!
 
-# ----------------------------------------------------------------------
-#           COPY DATA TO PROCESSING NODE 
-# ----------------------------------------------------------------------
-copy_data_commands, peasoup_commands, tmp_base_path, tmp_data_path, tmp_pipeline_path, tmp_singularity_path, tmp_results_path = gen.generate_copy_data(params, origin_dir=params["data_dir"],
-																					results_dir=params["results_dir"],
-																					epoch=params["epoch"], 
-																					user_id=params["user"], 
-																					pipeline_path=params["pipeline_dir"], 
-																					singularity_path=params["peasoup_singularity"], 
-																					)
-gen.write_slurm_copy_data(copy_data_commands, params, beam, results_dir, scripts_path)
-# gen.write_slurm_search_script
+# --------------------------------------------------------------------------------
+#          SLURM COMBINE FILTERBANKS  TO 2 X 10 MIN FILES & 1 X 20 MIN FILES 
+# --------------------------------------------------------------------------------
+peasoup_container = os.path.join(tmp_singularity_path, os.path.basename(params['peasoup_singularity']))
+dspsr_containers = os.path.join(tmp_singularity_path, os.path.basename(params['dspsr_singularity']))
 
-# copy_results_commands = generatejobs.generate_copy_results(tmp_results_dir=tmp_results_path, results_dir=params["results_dir"])
+beams = sorted(glob.glob(os.path.join(tmp_data_path, 'cfbf*')))
+for beam in beams: # MIGHT WANT TO COMBINE20, PROCESS, COPY THE RESULTS BACK, THEN DO AGAIN FOR 10 MINUTES CHUNKS
+	combine_10_cmd, combine_20_cmd = gen.digifil_commands(beam=beam, 
+															singularity_image=params['dspsr_singularity'], 
+															working_dir=tmp_base, 
+															output_dir=None, 
+															bits=8)
+	# WRITE THE SLURM SCRIPT TO COMBINE THE DATA:
+	# gen.write_slurm_combine10(combine_10_cmd, params, beam_dir=beam, results_dir=tmp_results_path, scripts_path=tmp_scripts_path)
+	gen.write_slurm_combine20(combine_20_cmd, params, beam_dir=beam, results_dir=tmp_results_path, scripts_path=tmp_scripts_path)
+# --------------------------------------------------------------------------------
+#          SLURM PEASOUP SEARCH SCRIPTS 
+# --------------------------------------------------------------------------------
+	filterbank_files = sorted(glob.glob(os.path.join(beam, "*to*")))
+	for filterbank in filterbank_files:
+		print (filterbank)
+		peasoup_command = gen.peasoup_command(working_dir=tmp_base, 
+							singularity_path = peasoup_container, 
+							results_dir=tmp_results_path, 
+							params=params, 
+							filterbank_file=filterbank)
+		# print (peasoup_command)
 
-# # # --------------------------------------------------------------------
-# #           GET THE BEAMS & WRITE SEARCH COMMAND
-# # ----------------------------------------------------------------------
-
-# beam_dirs = sorted(glob.glob(os.path.join(tmp_data_path, "cfbf*")))
-# print (beam_dir)
-for beam_dir in beam_dirs:
-	syscall = []
-	beam = os.path.basename(beam_dir)
-	filterbanks = sorted(glob.glob(os.path.join(beam_dir, "*.fil")))
-	for fil_file in filterbanks:
-		for dm_start, dm_end in dm_ranges:
-			params["dm_start"] = dm_start
-			params["dm_end"] = dm_end
-		peasoup_command = generatejobs.generate_peasoup_command(tmp_base_path, tmp_data_path, tmp_pipeline_path, tmp_singularity_path, tmp_results_path, params, fil_file)
-		syscall.append(peasoup_command)
-		print(syscall)
-generatejobs.write_slurm_search_script(beam, peasoup_command, copy_commands, params, results_dir, scripts_path)
+		gen.write_slurm_search_beam(peasoup_command, params, beam_dir=beam, results_dir=tmp_results_path, scripts_path=tmp_scripts_path)
 # ----------------------------------------------------------------------
 #           WRITE THE SLURM SUBMISSION SCRIPS
 # ----------------------------------------------------------------------
