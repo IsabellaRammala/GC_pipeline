@@ -4,6 +4,7 @@
 import os
 import shutil
 import configparser  
+import glob
 
 
 def preamble():
@@ -28,13 +29,16 @@ def read_config(config_file):
     params = {
         "user": config.get("USER", "user_id"),
         "pipeline_dir": config.get("PIPELINE", "pipeline_dir"),
+        "singularity_dir": config.get("PIPELINE", "singularity_dir"),
         "epoch": config.get("DATA", "epoch"),
         "data_dir": config.get("DATA", "data_dir"),
+        "dspsr_singularity": config.get("DSPSR", "dspsr_singularity"),
         "readfile": config.get("PRESTO", "readfile"),
         "make_ddplan": config.get("PRESTO", "makeDDplan"),
         "make_birdies": config.get("PRESTO", "makebirdies"), 
         "make_zaplist": config.get("PRESTO", "makezaplist"),
         "presto_singularity": config.get("PRESTO", "presto_singularity"),
+        "peasoup_singularity": config.get("PEASOUP", "peasoup_singularity"),
         "filterbank_dir": config.get("PEASOUP", "filterbank_dir"),
         "results_dir": config.get("PEASOUP", "results_dir"),
         "scratch_dir": config.get("PEASOUP", "scratch_dir"),
@@ -46,7 +50,6 @@ def read_config(config_file):
         "nharmonics": config.getint("PEASOUP", "nharmonics"),
         "min_snr": config.getfloat("PEASOUP", "min_snr"),
         "parallel": config.getboolean("PEASOUP", "parallel"),
-        "peasoup_singularity": config.get("PEASOUP", "peasoup_singularity"),
         "output_dir": config.get("PEASOUP", "output_dir"),
         "job_name": config.get("PEASOUP", "job_name"),
         "partition": config.get("PEASOUP", "partition"),
@@ -62,28 +65,97 @@ def read_config(config_file):
     }
     return params
 
-def setup_directories(params, results_dir, epoch, user_id, pipeline_path, singularity_path):
+def combined_fil_file(fil1, fil2):
     """
+    Given two filterbank file paths, generate a new name for the combined filterbank for be 
+    generated from dspr
+    """
+    parts1 = fil1.split('/')[-1].split('_')
+    parts2 = fil2.split('/')[-1].split('_')
+    prefix = '_'.join(parts1[:2])
+    start = parts1[2].replace('.fil', '')
+    end = parts2[2].replace('.fil', '')
+    combined_name = f"{prefix}_{start}_to_{end}.fil"
+    return combined_name
 
-def find_filterbank_files(directory):
-    """
-    Finds all filterbank (.fil) files in the specified directory and returns their paths as a list.
-    """
-    if not os.path.isdir(directory):
-        raise IOError("Directory {} not found.".format(directory))
-    
-    filterbank_files = [os.path.join(directory, f) for f in os.listdir(directory) if f.endswith(".fil")]
-    print (filterbank_files)
-    
-    if not filterbank_files:
-        raise IOError("No filterbank files found in directory {}.".format(directory))
-    
-    return filterbank_files
 
-def generate_peasoup_command(working_dir, data_path, pipeline_path, singularity_path, results_dir, params, filterbank_file):
+def digifil_commands(beam, singularity_image, working_dir, output_dir=None, bits=8):
+    """
+    Given a directory containing 5-min filterbank files, generate digifil commands
+    to create 10-min and 20-min versions.
+
+    Parameters:
+        beam (str): Path to directory containing the input .fil files.
+        output_dir (str or None): Directory to place output files. Defaults to beam_dir.
+        bits (int): Number of bits per sample for output (default 8).
+    
+    Returns:
+        List of shell commands (str).
+    """
+    # beam_path = Path(beam)
+    output_path = output_dir if output_dir else beam
+
+    # Sort files by name (assumes time ordering is encoded in filename)
+    fil_files = sorted(glob.glob(os.path.join(beam, "*.fil")))
+
+    if len(fil_files) < 2:
+        raise ValueError("Need at least 2 .fil files to combine")
+
+    half_cmd = []
+    combined_file_names10 = []
+    # Create 10-min file (2 combinations)
+    for i in range(0, len(fil_files) - 1, 2):
+        f1 = fil_files[i]
+        f2 = fil_files[i + 1]
+        combined_name_10 = combined_fil_file(f1, f2)
+        combined_file_names10.append(combined_name_10)
+        out_file = os.path.join(output_path, combined_name_10)
+        cmd = f'singularity exec -B {working_dir} {singularity_image} digifil -cont -b {bits} -o {out_file} {f1} {f2}'
+        half_cmd.append(cmd)
+    
+    # Create a 20-min file (all combined)
+    first_fil = fil_files[0]
+    last_fil= fil_files[-1]
+    combined_name_20 = combined_fil_file(first_fil, last_fil)
+    out_file = os.path.join(output_path, combined_name_20)
+    full_cmd = f'singularity exec -B {working_dir} {singularity_image} digifil -cont -b {bits} -o {out_file} {" ".join(fil_files)}'
+    
+
+    return half_cmd, full_cmd
+
+def setup_directories(epoch, user_id, pipeline_path, singularity_path):
+    """
+    Sets up the input and output directories
+    """
+    scripts_path = os.path.join(pipeline_path, "SCRIPTS")
+    tmp_base = os.path.join("/tmp", user_id)
+    destination_dir_name = "DATA"
+    tmp_data_path = os.path.join(tmp_base, destination_dir_name, epoch)
+    tmp_pipeline_path = os.path.join(tmp_base, os.path.basename(pipeline_path))
+    tmp_singularity_path = os.path.join(tmp_base, os.path.basename(singularity_path))
+    tmp_scripts_path = os.path.join(tmp_pipeline_path, os.path.basename(scripts_path))
+    tmp_results_path = os.path.join(tmp_base, ("RESULTS"))
+    # data_path = os.path.join(origin_dir, epoch)
+    return tmp_base, tmp_data_path, tmp_results_path, tmp_scripts_path, tmp_singularity_path, tmp_pipeline_path, scripts_path
+    
+
+# def find_filterbank_files(directory):
+#     """
+#     Finds all filterbank (.fil) files in the specified directory and returns their paths as a list.
+#     """
+#     if not os.path.isdir(directory):
+#         raise IOError("Directory {} not found.".format(directory))
+    
+#     filterbank_files = [os.path.join(directory, f) for f in os.listdir(directory) if f.endswith(".fil")]
+#     # print (filterbank_files)
+    
+#     if not filterbank_files:
+#         raise IOError("No filterbank files found in directory {}.".format(directory))
+#     return filterbank_files
+
+def peasoup_command(working_dir, singularity_path, results_dir, params, filterbank_file):
     """
     Generates the PEASOUP command string based on the provided parameters,
-    with added Singularity binding for the /tmp working directory.
     """
     command = (
         "singularity exec -B {working_dir} {singularity_path} peasoup "
@@ -108,25 +180,15 @@ def generate_peasoup_command(working_dir, data_path, pipeline_path, singularity_
 
     if params["parallel"]:
         command += "-p"
-    print(command)
+    # print(command)
     return command
 
-def generate_copy_data(params, origin_dir, results_dir, epoch, user_id, pipeline_path, singularity_path):
+def copy_data(tmp_base, tmp_data_path, tmp_results_path, data_path, pipeline_path, singularity_path):
     """
-    Copy the data, pipeline, and containmer to  processing node )
-    """
-    tmp_base = os.path.join("/tmp", user_id)
-    destination_dir_name = "DATA"
-    tmp_data_path = os.path.join(tmp_base, destination_dir_name, epoch)
-    tmp_pipeline_path = os.path.join(tmp_base, os.path.basename(pipeline_path))
-    tmp_singularity_path = os.path.join(tmp_base, os.path.basename(singularity_path))
-    tmp_results_path = os.path.join(tmp_base, ("RESULTS"))
-    tmp_scripts_path = os.path.join(tmp_base, ("SCRIPTS"))
-    
-    data_path = os.path.join(origin_dir, epoch)
-
-    if not os.path.exists(origin_dir):
-        raise FileNotFoundError(f"Data directory not found: {origin_dir}")
+    Copy the data, pipeline, and containmer to  processing node)
+    """    
+    if not os.path.exists(data_path):
+        raise FileNotFoundError(f"Data directory not found: {data_path}")
     
     if os.path.exists(tmp_data_path):
         print(f"[INFO] Data already exists in /tmp: {tmp_data_path}")
@@ -134,28 +196,28 @@ def generate_copy_data(params, origin_dir, results_dir, epoch, user_id, pipeline
     else:
         copy_commands = [
             f"mkdir {tmp_base}",
-            f"mkdir {tmp_base}/SCRIPTS",
+            f"mkdir {os.path.join(tmp_base, 'DATA')}",
             f"mkdir {tmp_results_path}", 
             f"cp -r {data_path} {tmp_data_path}",
-            f"cp -r {pipeline_path} {tmp_pipeline_path}",
-            f"cp {singularity_path} {tmp_singularity_path}",
+            f"cp -r {pipeline_path} {tmp_base}",
+            f"cp -r {singularity_path} {tmp_base}",
         ]
         # print(f"[INFO] Will run copy commands to /tmp.")
-        peasoup_commands = []
-        if os.path.exists(tmp_data_path):
-            filterbank_files = find_filterbank_files(tmp_data_path)
-            for fil in filterbank_files:
-                cmd = generate_peasoup_command(
-                        working_dir=tmp_base,
-                        data_path=tmp_data_path,
-                        pipeline_path=tmp_pipeline_path,
-                        singularity_path=tmp_singularity_path,
-                        results_dir=tmp_results_path,
-                        params=params,
-                        filterbank_file=fil
-                )
-            peasoup_commands.append(cmd)
-    return copy_commands, peasoup_commands, tmp_base, tmp_data_path, tmp_pipeline_path, tmp_singularity_path, tmp_results_path
+        # peasoup_commands = []
+        # if os.path.exists(tmp_data_path):
+        #     filterbank_files = find_filterbank_files(tmp_data_path)
+        #     for fil in filterbank_files:
+        #         cmd = generate_peasoup_command(
+        #                 working_dir=tmp_base,
+        #                 data_path=tmp_data_path,
+        #                 pipeline_path=tmp_pipeline_path,
+        #                 singularity_path=tmp_singularity_path,
+        #                 results_dir=tmp_results_path,
+        #                 params=params,
+        #                 filterbank_file=fil
+        #                 )
+        #     peasoup_commands.append(cmd)
+    return copy_commands #, peasoup_commands 
     
 def generate_copy_results(tmp_results_dir, results_dir):
     """
@@ -180,47 +242,111 @@ def generate_copy_results(tmp_results_dir, results_dir):
 #         current_dir=current_dir,
 #         results_dir=params[""]
 #     )
-def write_slurm_copy_data(copy_commands, params, beam, results_dir, scripts_path):
+def write_slurm_copy_data(copy_commands, params, results_dir, scripts_path):
     """
     Writes the slurm sript to copy data to /tmp
     """
-    script_name = "copy_data_to_node_{}.sh".format(beam)
-    job_name = script_name.split('.')[0]
-    tmp_script_path = os.path.join(scripts_path, script_name)
-
+    epoch = params["epoch"]
+    script_name = os.path.join(scripts_path, f"01_copy_{epoch}.sh")
+    job_name = f"CP{epoch}"
+    # tmp_script_path = os.path.join(scripts_path, script_name)
+    
     slurm_header = """#!/usr/bin/env bash
-        #SBATCH --job-name={job_name}
-        #SBATCH --partition={partition}
-        #SBATCH --time={cpu_time}
-        #SBATCH --cpus-per-task={cpus}
-        #SBATCH --output={results_dir}/{job_name}_%j.out
-        #SBATCH --error={results_dir}/{job_name}_%j.err
-        """.format(job_name=job_name,
-                results_dir=results_dir,
-                partition=params['partition'],
-                cpu_time=params['time'],
-                cpus=params['cpus'], 
-                )
-    with open(tmp_script_path, "w") as f:
+#SBATCH --job-name={job_name}
+#SBATCH --partition={partition}
+#SBATCH --time={cpu_time}
+#SBATCH --cpus-per-task={cpus}
+#SBATCH --output={results_dir}/{job_name}_%j.out
+#SBATCH --error={results_dir}/{job_name}_%j.err
+    """.format(job_name=job_name,
+            results_dir=results_dir,
+            partition=params['partition'],
+            cpu_time=params['time'],
+            cpus=params['cpus'], 
+            )
+    with open(script_name, "w") as f:
         f.write(slurm_header)
         f.write("\n")
 
         for command in copy_commands:
             f.write(command + "\n")
         f.write("\n")
+    os.chmod(script_name, 0o755)
+    print("SLURM copy-data script written to {}".format(script_name))
+
+def write_slurm_combine10(commands, params, beam_dir, results_dir, scripts_path):
+    """
+    Writes the slurm sript to combine filterbank files to 10 & 20 min time chuncks
+    """
+    beam = beam_dir.split('/')[-1]
+    script_name = f"02_combine10_{beam}.sh"
+    # print (script_name)
+    job_name = f"CBN10{beam}"
+    tmp_script_path = os.path.join(scripts_path, script_name)
+
+    slurm_header = """#!/usr/bin/env bash
+#SBATCH --job-name={job_name}
+#SBATCH --partition={partition}
+#SBATCH --time={cpu_time}
+#SBATCH --cpus-per-task={cpus}
+#SBATCH --output={results_dir}/{job_name}_%j.out
+#SBATCH --error={results_dir}/{job_name}_%j.err
+    """.format(job_name=job_name,
+                results_dir=results_dir,
+                partition=params['partition'],
+                cpu_time=params['time'],
+                cpus=params['cpus'], 
+                )          
+
+    with open(tmp_script_path, "w") as f:
+        f.write(slurm_header)
+        f.write("\n")
+
+        for command in commands:
+            f.write(command + "\n")
+            # print (command)
+        f.write("\n")
     os.chmod(tmp_script_path, 0o755)
-    print("SLURM search script written to {}/{}".format(tmp_script_path, script_name))
+    print("SLURM combine filterbanks to 10 min chunks for beam ({}) script written to {}".format(beam_dir, tmp_script_path))
+
+def write_slurm_combine20(commands, params, beam_dir, results_dir, scripts_path):
+    """
+    Writes the slurm sript to combine filterbank files to 10 & 20 min time chuncks
+    """
+    beam = beam_dir.split('/')[-1]
+    script_name = f"02_combine20_{beam}.sh"
+    job_name = f"CBN20{beam}"
+    tmp_script_path = os.path.join(scripts_path, script_name)
+
+    slurm_header = """#!/usr/bin/env bash
+#SBATCH --job-name={job_name}
+#SBATCH --partition={partition}
+#SBATCH --time={cpu_time}
+#SBATCH --cpus-per-task={cpus}
+#SBATCH --output={results_dir}/{job_name}_%j.out
+#SBATCH --error={results_dir}/{job_name}_%j.err
+    """.format(job_name=job_name,
+                results_dir=results_dir,
+                partition=params['partition'],
+                cpu_time=params['time'],
+                cpus=params['cpus'], 
+                )        
+    with open(tmp_script_path, "w") as f:
+        f.write(slurm_header)
+        f.write("\n")
+        f.write(commands)
+        # print (commands)
+    os.chmod(tmp_script_path, 0o755)
+    print("SLURM combine filterbanks to 20 min chunk for beam ({}) script written to {}".format(beam_dir, tmp_script_path))
 
 
-
-
-def write_slurm_search_beam(beam, peasoup_command, copy_commands, params, results_dir, scripts_path):
+def write_slurm_search_beam(peasoup_command, params, beam_dir, results_dir, scripts_path):
     """
     Writes the SLURM job script for submitting the PEASOUP jobs.
     """
-
-    script_name = "peasoup_search_{}.sh".format(beam)
-    job_name = script_name.split('.')[0]
+    beam = beam_dir.split('/')[-1]
+    script_name = f"03_peasoup_search_{beam}.sh"
+    job_name = f"SCH20{beam}"
     tmp_script_path = os.path.join(scripts_path, script_name)
 
     slurm_header = """#!/usr/bin/env bash
@@ -234,28 +360,29 @@ def write_slurm_search_beam(beam, peasoup_command, copy_commands, params, result
 echo "Running PEASOUP on {beam}"
 
 start=$(date +%s)
-""".format(
-    job_name=job_name,
-    results_dir=results_dir,
-    partition=params['partition'],
-    cpu_time=params['time'],
-    cpus=params['cpus'], 
-    beam=beam
-)
+    """.format(
+        job_name=job_name,
+        results_dir=results_dir,
+        partition=params['partition'],
+        cpu_time=params['time'],
+        cpus=params['cpus'], 
+        beam=beam
+    )
 
     with open(tmp_script_path, "w") as f:
         f.write(slurm_header)
         f.write("\n")
-        
-        for command in peasoup_command:
-            f.write(command + "\n")
-            filterbank = os.path.basename(command.split("-i")[1].split()[0])
-            # f.write('\necho "PEASOUP job on {filterbank} completed"\n')
-            f.write('\nend=$(date +%s)')
-            f.write('\nruntime=$((end - start))')
-            f.write('\necho "Total runtime: ${runtime} seconds"')
+        f.write(peasoup_command + "\n")
+        f.write('\nend=$(date +%s)')
+        f.write('\nruntime=$((end - start))')
+        f.write('\necho "Total runtime: ${runtime} seconds"')
+        # for command in peasoup_command:
+        #     f.write(command + "\n")
+        #     f.write('\nend=$(date +%s)')
+        #     f.write('\nruntime=$((end - start))')
+        f.write('\necho "Total runtime: ${runtime} seconds"')
     os.chmod(tmp_script_path, 0o755)
-    print("SLURM search script written to {}/{}".format(tmp_script_path, script_name))
+    print("SLURM search script written to {}".format(tmp_script_path))
 
 def write_batch_submission_script(data_path, slurm_scripts_dir):
     """
