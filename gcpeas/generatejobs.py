@@ -11,7 +11,7 @@ def preamble():
     print('---------------------+----------------------------------------------------------')
     print('                     |')
     print('                     | ')
-    print('      GC PEAS        | v0.0')
+    print('      GC PEAS        | v0.1')
     print('                     | ')
     print('                     | ')
     print('---------------------+----------------------------------------------------------')
@@ -83,14 +83,6 @@ def digifil_commands(beam, singularity_image, working_dir, output_dir=None, bits
     """
     Given a directory containing 5-min filterbank files, generate digifil commands
     to create 10-min and 20-min versions.
-
-    Parameters:
-        beam (str): Path to directory containing the input .fil files.
-        output_dir (str or None): Directory to place output files. Defaults to beam_dir.
-        bits (int): Number of bits per sample for output (default 8).
-    
-    Returns:
-        List of shell commands (str).
     """
     # beam_path = Path(beam)
     output_path = output_dir if output_dir else beam
@@ -127,6 +119,7 @@ def setup_directories(epoch, user_id, pipeline_path, singularity_path):
     """
     Sets up the input and output directories
     """
+    # EVENTUALLY NEED TO GET THE USER AND TMP ENV DIRECTLY FROM BASH!!!
     scripts_path = os.path.join(pipeline_path, "SCRIPTS")
     tmp_base = os.path.join("/tmp", user_id)
     destination_dir_name = "DATA"
@@ -183,7 +176,7 @@ def peasoup_command(working_dir, singularity_path, results_dir, params, filterba
     # print(command)
     return command
 
-def copy_data(tmp_base, tmp_data_path, tmp_results_path, data_path, pipeline_path, singularity_path):
+def copy_data(tmp_base, tmp_data_path, tmp_results_path, data_path, epoch, pipeline_path, singularity_path):
     """
     Copy the data, pipeline, and containmer to  processing node)
     """    
@@ -194,32 +187,21 @@ def copy_data(tmp_base, tmp_data_path, tmp_results_path, data_path, pipeline_pat
         print(f"[INFO] Data already exists in /tmp: {tmp_data_path}")
         copy_commands = []
     else:
+        tmp_dir = os.path.join(tmp_base, 'DATA')
+        tmp_epoch = os.path.join(tmp_dir, f'{epoch}')
         copy_commands = [
             f"mkdir {tmp_base}",
-            f"mkdir {os.path.join(tmp_base, 'DATA')}",
+            f"mkdir {tmp_dir}",
+            f"mkdir {tmp_epoch}",
             f"mkdir {tmp_results_path}", 
             f"cp -r {data_path} {tmp_data_path}",
             f"cp -r {pipeline_path} {tmp_base}",
             f"cp -r {singularity_path} {tmp_base}",
         ]
-        # print(f"[INFO] Will run copy commands to /tmp.")
-        # peasoup_commands = []
-        # if os.path.exists(tmp_data_path):
-        #     filterbank_files = find_filterbank_files(tmp_data_path)
-        #     for fil in filterbank_files:
-        #         cmd = generate_peasoup_command(
-        #                 working_dir=tmp_base,
-        #                 data_path=tmp_data_path,
-        #                 pipeline_path=tmp_pipeline_path,
-        #                 singularity_path=tmp_singularity_path,
-        #                 results_dir=tmp_results_path,
-        #                 params=params,
-        #                 filterbank_file=fil
-        #                 )
-        #     peasoup_commands.append(cmd)
-    return copy_commands #, peasoup_commands 
+
+    return copy_commands 
     
-def generate_copy_results(tmp_results_dir, results_dir):
+def copy_results(tmp_results_dir, results_dir):
     """
     Copy the results back to /scratch
     """
@@ -242,20 +224,20 @@ def generate_copy_results(tmp_results_dir, results_dir):
 #         current_dir=current_dir,
 #         results_dir=params[""]
 #     )
-def write_slurm_copy_data(copy_commands, params, results_dir, scripts_path):
+def write_slurm_copy_data(script_name, copy_commands, params, beam_dir, results_dir, scripts_path, working_dir):
     """
     Writes the slurm sript to copy data to /tmp
     """
-    epoch = params["epoch"]
-    script_name = os.path.join(scripts_path, f"01_copy_{epoch}.sh")
-    job_name = f"CP{epoch}"
-    # tmp_script_path = os.path.join(scripts_path, script_name)
+    beam = beam_dir.split('/')[-1]
+    job_name = f"CP{beam}"
+
+    tmp_script_path = os.path.join(working_dir, script_name)
     
     slurm_header = """#!/usr/bin/env bash
 #SBATCH --job-name={job_name}
-#SBATCH --partition={partition}
-#SBATCH --time={cpu_time}
-#SBATCH --cpus-per-task={cpus}
+#SBATCH --partition=short.q
+#SBATCH --time=00:20:00
+#SBATCH --cpus-per-task=2
 #SBATCH --output={results_dir}/{job_name}_%j.out
 #SBATCH --error={results_dir}/{job_name}_%j.err
     """.format(job_name=job_name,
@@ -264,31 +246,31 @@ def write_slurm_copy_data(copy_commands, params, results_dir, scripts_path):
             cpu_time=params['time'],
             cpus=params['cpus'], 
             )
-    with open(script_name, "w") as f:
+    with open(tmp_script_path, "w") as f:
         f.write(slurm_header)
         f.write("\n")
 
         for command in copy_commands:
             f.write(command + "\n")
         f.write("\n")
-    os.chmod(script_name, 0o755)
-    print("SLURM copy-data script written to {}".format(script_name))
+    os.chmod(tmp_script_path, 0o755)
+    print("SLURM copy-data script written to {}".format(tmp_script_path))
 
-def write_slurm_combine10(commands, params, beam_dir, results_dir, scripts_path):
+def write_slurm_combine10(script_name, commands, params, beam_dir, results_dir, scripts_path, working_dir):
     """
     Writes the slurm sript to combine filterbank files to 10 & 20 min time chuncks
     """
     beam = beam_dir.split('/')[-1]
-    script_name = f"02_combine10_{beam}.sh"
-    # print (script_name)
+    # script_name = f"02_combine10_{beam}.sh"
     job_name = f"CBN10{beam}"
-    tmp_script_path = os.path.join(scripts_path, script_name)
+    tmp_script_path = os.path.join(working_dir, script_name)
+    # tmp_script_path = os.path.join(scripts_path, script_name)
 
     slurm_header = """#!/usr/bin/env bash
 #SBATCH --job-name={job_name}
-#SBATCH --partition={partition}
-#SBATCH --time={cpu_time}
-#SBATCH --cpus-per-task={cpus}
+#SBATCH --partition=short.q
+#SBATCH --time=00:20:00
+#SBATCH --cpus-per-task=2
 #SBATCH --output={results_dir}/{job_name}_%j.out
 #SBATCH --error={results_dir}/{job_name}_%j.err
     """.format(job_name=job_name,
@@ -307,22 +289,23 @@ def write_slurm_combine10(commands, params, beam_dir, results_dir, scripts_path)
             # print (command)
         f.write("\n")
     os.chmod(tmp_script_path, 0o755)
-    print("SLURM combine filterbanks to 10 min chunks for beam ({}) script written to {}".format(beam_dir, tmp_script_path))
+    print("SLURM combine filterbanks to 10 min chunks script written to {}".format(tmp_script_path))
 
-def write_slurm_combine20(commands, params, beam_dir, results_dir, scripts_path):
+def write_slurm_combine20(script_name, commands, params, beam_dir, results_dir, scripts_path, working_dir):
     """
     Writes the slurm sript to combine filterbank files to 10 & 20 min time chuncks
     """
     beam = beam_dir.split('/')[-1]
-    script_name = f"02_combine20_{beam}.sh"
     job_name = f"CBN20{beam}"
-    tmp_script_path = os.path.join(scripts_path, script_name)
+
+    tmp_script_path = os.path.join(working_dir, script_name)
+    # tmp_script_path = os.path.join(scripts_path, script_name)
 
     slurm_header = """#!/usr/bin/env bash
 #SBATCH --job-name={job_name}
-#SBATCH --partition={partition}
-#SBATCH --time={cpu_time}
-#SBATCH --cpus-per-task={cpus}
+#SBATCH --partition=short.q
+#SBATCH --time=00:20:00
+#SBATCH --cpus-per-task=2
 #SBATCH --output={results_dir}/{job_name}_%j.out
 #SBATCH --error={results_dir}/{job_name}_%j.err
     """.format(job_name=job_name,
@@ -337,17 +320,19 @@ def write_slurm_combine20(commands, params, beam_dir, results_dir, scripts_path)
         f.write(commands)
         # print (commands)
     os.chmod(tmp_script_path, 0o755)
-    print("SLURM combine filterbanks to 20 min chunk for beam ({}) script written to {}".format(beam_dir, tmp_script_path))
+    print("SLURM combine filterbanks to 20 min chunk script written to {}".format(tmp_script_path))
 
 
-def write_slurm_search_beam(peasoup_command, params, beam_dir, results_dir, scripts_path):
+def write_slurm_search_beam(script_name, peasoup_command, params, beam_dir, results_dir, scripts_path, working_dir):
     """
     Writes the SLURM job script for submitting the PEASOUP jobs.
     """
+    # output_script_name = f'submit__search_{beam_name}_jobs.sh'
+    tmp_script_path = os.path.join(working_dir, script_name)
+    
     beam = beam_dir.split('/')[-1]
-    script_name = f"03_peasoup_search_{beam}.sh"
     job_name = f"SCH20{beam}"
-    tmp_script_path = os.path.join(scripts_path, script_name)
+    # tmp_script_path = os.path.join(scripts_path, script_name)
 
     slurm_header = """#!/usr/bin/env bash
 #SBATCH --job-name={job_name}
@@ -384,34 +369,63 @@ start=$(date +%s)
     os.chmod(tmp_script_path, 0o755)
     print("SLURM search script written to {}".format(tmp_script_path))
 
-def write_batch_submission_script(data_path, slurm_scripts_dir):
+def write_slurm_copy_results(script_name, copy_commands, params, beam_dir, results_dir, working_dir):
     """
-    Generates a bash script to submit all SLURM job scripts in a directory using sbatch.
+    Writes the slurm sript to copy data to /tmp
     """
-    #slurm_dir = params["filterbank_dir"]
-    #if not os.path.isdir(slurm_dir):
-    #    raise IOError("The directory {} does not exist.".format(slurm_dir))
+    beam = beam_dir.split('/')[-1]
+    job_name = f"CPR{beam}"
+
+    tmp_script_path = os.path.join(working_dir, script_name)
     
-    # Find all SLURM scripts (*.sh) in the directory
-    slurm_scripts = [f for f in os.listdir(slurm_scripts_dir) if f.endswith(".sh")]
-    
-    if not slurm_scripts:
-       raise IOError("No SLURM job scripts (*.sh) found in the directory {}.".format(slurm_dir))
-    
-    # Write the sbatch submission script
-    for slurm_script in slurm_scripts:
-        output_script_name = 'submit_{}_jobs.sh'.format(slurm_script.split('.')[0])
-        output_script_path = os.path.join(slurm_scripts_dir, output_script_name)
-        with open(output_script_path, "w") as batch_file:
-            batch_file.write("#!/usr/bin/env bash\n\n")
-            batch_file.write("export SINGULARITY_BINDPATH={},{}\n\n".format(data_path, slurm_scripts_dir))
-            batch_file.write("echo 'Submitting all SLURM job scripts in {}'\n\n".format(slurm_scripts_dir))
-            batch_file.write("sbatch {}\n\n".format(slurm_script))
-            batch_file.write("\necho 'All jobs submitted.'\n")
-    
-    	# Make the script executable
-        os.chmod(output_script_path, 0o755)
-        print("Batch submission script written to {}".format(output_script_path))
+    slurm_header = """#!/usr/bin/env bash
+#SBATCH --job-name={job_name}
+#SBATCH --partition=short.q
+#SBATCH --time={cpu_time}
+#SBATCH --cpus-per-task={cpus}
+#SBATCH --output={results_dir}/{job_name}_%j.out
+#SBATCH --error={results_dir}/{job_name}_%j.err
+    """.format(job_name=job_name,
+            results_dir=results_dir,
+            partition=params['partition'],
+            cpu_time=params['time'],
+            cpus=params['cpus'], 
+            )
+    with open(tmp_script_path, "w") as f:
+        f.write(slurm_header)
+        f.write("\n")
+        for command in copy_commands:
+            f.write(command + "\n")
+        f.write("\n")
+    os.chmod(tmp_script_path, 0o755)
+    print("SLURM copy-data script written to {}".format(tmp_script_path))
 
 
+def write_submission_script(copydata_script, combine_script, search_script, copyresults_script, data_path, tmp_base, beam_name, slurm_scripts_dir, working_dir):
+    """
+    Generates a bash script to submit all SLURM job scripts in a directory.
+    """
+    output_script_name = f'submit_search_{beam_name}_jobs.sh'
+    output_script_path = os.path.join(working_dir, output_script_name)
+    job_id = "$(awk '{print $4})'" 
+    copy_id = f"CP{beam_name}"
+    combine_id = "CBN20"
+    search_id = "SCH20"
+    copyr_id = f"CPR{beam_name}"
+
+    with open(output_script_path, "w") as batch_file:
+        batch_file.write("#!/usr/bin/env bash\n\n")
+        batch_file.write(f"export SINGULARITY_BINDPATH={tmp_base},{data_path},{slurm_scripts_dir}\n\n")
+        batch_file.write(f"echo 'Submitting SLURM search jobs on beam {beam_name}'\n\n")
+
+        batch_file.write(f"{copy_id}=$(sbatch {copydata_script} | awk '{{print $4}}')\n")
+        batch_file.write(f"{combine_id}=$(sbatch -d afterok:${{{copy_id}}} {combine_script} | awk '{{print $4}}')\n")
+        batch_file.write(f"{search_id}=$(sbatch -d afterok:${{{combine_id}}} {search_script} | awk '{{print $4}}')\n")
+        batch_file.write(f"{copyr_id}=$(sbatch -d afterok:${{{search_id}}} {copyresults_script} | awk '{{print $4}}')\n\n")
+
+        batch_file.write("echo 'All jobs submitted.'\n")
+        batch_file.write(f'echo "scancel ${{{copy_id}}} ${{{combine_id}}} ${{{search_id}}}" > {os.path.join(working_dir, "scancel_jobs.sh")}\n')
+
+    os.chmod(output_script_path, 0o755)
+    print(f"Batch submission script written to {output_script_path}")
     
