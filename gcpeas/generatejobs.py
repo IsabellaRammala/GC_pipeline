@@ -65,72 +65,96 @@ def read_config(config_file):
     }
     return params
 
-def combined_fil_file(fil1, fil2):
-    """
-    Given two filterbank file paths, generate a new name for the combined filterbank for be 
-    generated from dspr
-    """
-    parts1 = fil1.split('/')[-1].split('_')
-    parts2 = fil2.split('/')[-1].split('_')
-    prefix = '_'.join(parts1[:2])
-    start = parts1[2].replace('.fil', '')
-    end = parts2[2].replace('.fil', '')
-    combined_name = f"{prefix}_{start}_to_{end}.fil"
-    return combined_name
+# def combined_fil_file(fil1, fil2):
+#     """
+#     Given two filterbank file paths, generate a new name for the combined filterbank for be 
+#     generated from dspr
+#     """
+#     parts1 = fil1.split('/')[-1].split('_')
+#     parts2 = fil2.split('/')[-1].split('_')
+#     prefix = '_'.join(parts1[:2])
+#     start = parts1[2].replace('.fil', '')
+#     end = parts2[2].replace('.fil', '')
+#     combined_name = f"{prefix}_{start}_to_{end}.fil"
+#     return combined_name
 
 
-def digifil_commands(beam, singularity_image, working_dir, output_dir=None, bits=8):
-    """
-    Given a directory containing 5-min filterbank files, generate digifil commands
-    to create 10-min and 20-min versions.
-    """
-    # beam_path = Path(beam)
-    output_path = output_dir if output_dir else beam
+# def digifil_commands(beam, singularity_image, working_dir, output_dir=None, bits=8):
+#     """
+#     Given a directory containing 5-min filterbank files, generate digifil commands
+#     to create 10-min and 20-min versions.
+#     """
+#     # beam_path = Path(beam)
+#     output_path = output_dir if output_dir else beam
 
-    # Sort files by name (assumes time ordering is encoded in filename)
-    fil_files = sorted(glob.glob(os.path.join(beam, "*.fil")))
+#     # Sort files by name (assumes time ordering is encoded in filename)
+#     fil_files = sorted(glob.glob(os.path.join(beam, "*.fil")))
 
-    if len(fil_files) < 2:
-        raise ValueError("Need at least 2 .fil files to combine")
+#     if len(fil_files) < 2:
+#         raise ValueError("Need at least 2 .fil files to combine")
 
-    half_cmd = []
-    combined_file_names10 = []
-    # Create 10-min file (2 combinations)
-    for i in range(0, len(fil_files) - 1, 2):
-        f1 = fil_files[i]
-        f2 = fil_files[i + 1]
-        combined_name_10 = combined_fil_file(f1, f2)
-        combined_file_names10.append(combined_name_10)
-        out_file = os.path.join(output_path, combined_name_10)
-        cmd = f'singularity exec -B {working_dir} {singularity_image} digifil -cont -b {bits} -o {out_file} {f1} {f2}'
-        half_cmd.append(cmd)
+#     half_cmd = []
+#     combined_file_names10 = []
+#     # Create 10-min file (2 combinations)
+#     for i in range(0, len(fil_files) - 1, 2):
+#         f1 = fil_files[i]
+#         f2 = fil_files[i + 1]
+#         combined_name_10 = combined_fil_file(f1, f2)
+#         combined_file_names10.append(combined_name_10)
+#         out_file = os.path.join(output_path, combined_name_10)
+#         cmd = f'singularity exec -B {working_dir} {singularity_image} digifil -cont -b {bits} -o {out_file} {f1} {f2}'
+#         half_cmd.append(cmd)
     
-    # Create a 20-min file (all combined)
-    first_fil = fil_files[0]
-    last_fil= fil_files[-1]
-    combined_name_20 = combined_fil_file(first_fil, last_fil)
-    out_file = os.path.join(output_path, combined_name_20)
-    full_cmd = f'singularity exec -B {working_dir} {singularity_image} digifil -cont -b {bits} -o {out_file} {" ".join(fil_files)}'
+#     # Create a 20-min file (all combined)
+#     first_fil = fil_files[0]
+#     last_fil= fil_files[-1]
+#     combined_name_20 = combined_fil_file(first_fil, last_fil)
+#     out_file = os.path.join(output_path, combined_name_20)
+#     full_cmd = f'singularity exec -B {working_dir} {singularity_image} digifil -cont -b {bits} -o {out_file} {" ".join(fil_files)}'
     
 
-    return half_cmd, full_cmd
+#     return half_cmd, full_cmd
+
+
+# def setup_directories(epoch, user_id, pipeline_path, singularity_path):
+#     """
+#     Sets up the input and output directories
+#     """
+#     # EVENTUALLY NEED TO GET THE USER AND TMP ENV DIRECTLY FROM BASH!!!
+#     scripts_path = os.path.join(pipeline_path, "SCRIPTS")
+#     tmp_base = os.path.join("/tmp", user_id)
+#     destination_dir_name = "DATA"
+#     tmp_data_path = os.path.join(tmp_base, destination_dir_name, epoch)
+#     tmp_pipeline_path = os.path.join(tmp_base, os.path.basename(pipeline_path))
+#     tmp_singularity_path = os.path.join(tmp_base, os.path.basename(singularity_path))
+#     tmp_scripts_path = os.path.join(tmp_pipeline_path, os.path.basename(scripts_path))
+#     tmp_results_path = os.path.join(tmp_base, ("RESULTS"))
+#     # data_path = os.path.join(origin_dir, epoch)
+#     return tmp_base, tmp_data_path, tmp_results_path, tmp_scripts_path, tmp_singularity_path, tmp_pipeline_path, scripts_path
+    
+    import os
 
 def setup_directories(epoch, user_id, pipeline_path, singularity_path):
     """
-    Sets up the input and output directories
+    Sets up and creates the input and output directories.
     """
-    # EVENTUALLY NEED TO GET THE USER AND TMP ENV DIRECTLY FROM BASH!!!
     scripts_path = os.path.join(pipeline_path, "SCRIPTS")
     tmp_base = os.path.join("/tmp", user_id)
     destination_dir_name = "DATA"
+    
     tmp_data_path = os.path.join(tmp_base, destination_dir_name, epoch)
     tmp_pipeline_path = os.path.join(tmp_base, os.path.basename(pipeline_path))
     tmp_singularity_path = os.path.join(tmp_base, os.path.basename(singularity_path))
     tmp_scripts_path = os.path.join(tmp_pipeline_path, os.path.basename(scripts_path))
-    tmp_results_path = os.path.join(tmp_base, ("RESULTS"))
-    # data_path = os.path.join(origin_dir, epoch)
+    tmp_results_path = os.path.join(tmp_base, "RESULTS")
+
+    os.makedirs(tmp_data_path, exist_ok=True)
+    os.makedirs(tmp_pipeline_path, exist_ok=True)
+    os.makedirs(tmp_singularity_path, exist_ok=True)
+    os.makedirs(tmp_scripts_path, exist_ok=True)
+    os.makedirs(tmp_results_path, exist_ok=True)
+
     return tmp_base, tmp_data_path, tmp_results_path, tmp_scripts_path, tmp_singularity_path, tmp_pipeline_path, scripts_path
-    
 
 # def find_filterbank_files(directory):
 #     """
@@ -157,6 +181,7 @@ def peasoup_command(working_dir, singularity_path, results_dir, params, filterba
         "--dm_start {dm_start} --dm_end {dm_end} "
         "--acc_start {acc_start} --acc_end {acc_end} "
         "--nharmonics {nharmonics} --min_snr {min_snr} "
+        "--sta"
     ).format(
         working_dir=working_dir,
         filterbank_dir=params["epoch"],
@@ -176,41 +201,97 @@ def peasoup_command(working_dir, singularity_path, results_dir, params, filterba
     # print(command)
     return command
 
+# def copy_data(tmp_base, tmp_data_path, tmp_results_path, data_path, epoch, pipeline_path, singularity_path):
+#     """
+#     Copy the data, pipeline, and containmer to  processing node)
+#     """    
+#     if not os.path.exists(data_path):
+#         raise FileNotFoundError(f"Data directory not found: {data_path}")
+    
+#     if os.path.exists(tmp_data_path):
+#         print(f"[INFO] Data already exists in /tmp: {tmp_data_path}")
+#         copy_commands = []
+#     else:
+#         tmp_dir = os.path.join(tmp_base, 'DATA')
+#         tmp_epoch = os.path.join(tmp_dir, f'{epoch}')
+#         copy_commands = [
+#         f'mkdir -p "{tmp_base}"',
+#         f'mkdir -p "{tmp_dir}"',
+#         f'mkdir -p "{tmp_epoch}"',
+#         f'mkdir -p "{tmp_results_path}"',
+#         f'cp -r "{data_path}"/* "{tmp_data_path}"',
+#         f'cp -r "{pipeline_path}" "{tmp_base}"',
+#         f'cp -r "{singularity_path}" "{tmp_base}"'
+#         ]
+
+#     return copy_commands 
+
+import os
+import shutil
+
 def copy_data(tmp_base, tmp_data_path, tmp_results_path, data_path, epoch, pipeline_path, singularity_path):
     """
-    Copy the data, pipeline, and containmer to  processing node)
-    """    
+    Copy the data, pipeline, and container to the processing node using shutil.
+    Assumes necessary directories except tmp_data_path are already created.
+    """
     if not os.path.exists(data_path):
         raise FileNotFoundError(f"Data directory not found: {data_path}")
     
     if os.path.exists(tmp_data_path):
         print(f"[INFO] Data already exists in /tmp: {tmp_data_path}")
-        copy_commands = []
-    else:
-        tmp_dir = os.path.join(tmp_base, 'DATA')
-        tmp_epoch = os.path.join(tmp_dir, f'{epoch}')
-        copy_commands = [
-            f"mkdir {tmp_base}",
-            f"mkdir {tmp_dir}",
-            f"mkdir {tmp_epoch}",
-            f"mkdir {tmp_results_path}", 
-            f"cp -r {data_path} {tmp_data_path}",
-            f"cp -r {pipeline_path} {tmp_base}",
-            f"cp -r {singularity_path} {tmp_base}",
-        ]
+        return []  
 
-    return copy_commands 
-    
+    # COPY DATA
+    shutil.copytree(data_path, tmp_data_path)
+
+    # COPY PIPELINE
+    pipeline_dest = os.path.join(tmp_base, os.path.basename(pipeline_path))
+    if not os.path.exists(pipeline_dest):
+        shutil.copytree(pipeline_path, pipeline_dest)
+
+    # COPY CONTAINERS
+    singularity_dest = os.path.join(tmp_base, os.path.basename(singularity_path))
+    if os.path.isdir(singularity_path):
+        if not os.path.exists(singularity_dest):
+            shutil.copytree(singularity_path, singularity_dest)
+    else:
+        if not os.path.exists(singularity_dest):
+            shutil.copy2(singularity_path, singularity_dest)
+
+
+# def copy_results(tmp_results_dir, results_dir):
+#     """
+#     Copy the results back to /scratch
+#     """
+#     # if not os.path.exists(tmp_results_dir):
+#     #     raise FileNotFoundError(f"Temporary data directory not found: {tmp_results_dir}")
+#     print(f"[INFO] Restoring data from {tmp_results_dir} to {results_dir} ...")
+#     command = [f"cp -r {tmp_results_dir} {results_dir}"]
+#     print(f"[INFO] Copy of results from node complete.")
+#     return command
+
+
 def copy_results(tmp_results_dir, results_dir):
     """
-    Copy the results back to /scratch
+    Copy the results back to /scratch.
     """
-    # if not os.path.exists(tmp_results_dir):
-    #     raise FileNotFoundError(f"Temporary data directory not found: {tmp_results_dir}")
+    if not os.path.exists(tmp_results_dir):
+        raise FileNotFoundError(f"Temporary results directory not found: {tmp_results_dir}")
+
     print(f"[INFO] Restoring data from {tmp_results_dir} to {results_dir} ...")
-    command = [f"cp -r {tmp_results_dir} {results_dir}"]
+
+    os.makedirs(results_dir, exist_ok=True)
+
+    for item in os.listdir(tmp_results_dir):
+        src = os.path.join(tmp_results_dir, item)
+        dst = os.path.join(results_dir, item)
+        if os.path.isdir(src):
+            shutil.copytree(src, dst, dirs_exist_ok=True)
+        else:
+            shutil.copy2(src, dst)
+
     print(f"[INFO] Copy of results from node complete.")
-    return command
+    return [f"Copied results from {tmp_results_dir} to {results_dir}"]
 
 # def presto_readfile(params, filterbank_file):
 #     """
@@ -224,37 +305,38 @@ def copy_results(tmp_results_dir, results_dir):
 #         current_dir=current_dir,
 #         results_dir=params[""]
 #     )
-def write_slurm_copy_data(script_name, copy_commands, params, beam_dir, results_dir, scripts_path, working_dir):
-    """
-    Writes the slurm sript to copy data to /tmp
-    """
-    beam = beam_dir.split('/')[-1]
-    job_name = f"CP{beam}"
+# def write_slurm_copy_data(script_name, copy_commands, params, beam_dir, results_dir, scripts_path, working_dir):
+#     """
+#     Writes the slurm sript to copy data to /tmp
+#     """
+#     beam = beam_dir.split('/')[-1]
+#     job_name = f"CP{beam}"
 
-    tmp_script_path = os.path.join(working_dir, script_name)
+#     tmp_script_path = os.path.join(working_dir, script_name)
     
-    slurm_header = """#!/usr/bin/env bash
-#SBATCH --job-name={job_name}
-#SBATCH --partition=short.q
-#SBATCH --time=00:20:00
-#SBATCH --cpus-per-task=2
-#SBATCH --output={results_dir}/{job_name}_%j.out
-#SBATCH --error={results_dir}/{job_name}_%j.err
-    """.format(job_name=job_name,
-            results_dir=results_dir,
-            partition=params['partition'],
-            cpu_time=params['time'],
-            cpus=params['cpus'], 
-            )
-    with open(tmp_script_path, "w") as f:
-        f.write(slurm_header)
-        f.write("\n")
+#     slurm_header = """#!/usr/bin/env bash
+# #SBATCH --job-name={job_name}
+# #SBATCH --partition=short.q
+# #SBATCH --time=00:20:00
+# #SBATCH --cpus-per-task=2
+# #SBATCH --output={results_dir}/{job_name}_%j.out
+# #SBATCH --error={results_dir}/{job_name}_%j.err
+#     """.format(job_name=job_name,
+#             results_dir=results_dir,
+#             partition=params['partition'],
+#             cpu_time=params['time'],
+#             cpus=params['cpus'], 
+#             )
+#     with open(tmp_script_path, "w") as f:
+#         f.write(slurm_header)
+#         f.write("\n")
+#         f.write("set -euo pipefail\n\n")
 
-        for command in copy_commands:
-            f.write(command + "\n")
-        f.write("\n")
-    os.chmod(tmp_script_path, 0o755)
-    print("SLURM copy-data script written to {}".format(tmp_script_path))
+#         for command in copy_commands:
+#             f.write(command + "\n")
+#         f.write("\n")
+#     os.chmod(tmp_script_path, 0o755)
+#     print("SLURM copy-data script written to {}".format(tmp_script_path))
 
 def write_slurm_combine10(script_name, commands, params, beam_dir, results_dir, scripts_path, working_dir):
     """
@@ -424,7 +506,7 @@ def write_submission_script(copydata_script, combine_script, search_script, copy
         batch_file.write(f"{copyr_id}=$(sbatch -d afterok:${{{search_id}}} {copyresults_script} | awk '{{print $4}}')\n\n")
 
         batch_file.write("echo 'All jobs submitted.'\n")
-        batch_file.write(f'echo "scancel ${{{copy_id}}} ${{{combine_id}}} ${{{search_id}}}" > {os.path.join(working_dir, "scancel_jobs.sh")}\n')
+        batch_file.write(f'echo "scancel ${{{copy_id}}} ${{{combine_id}}} ${{{search_id}}} ${{{copyr_id}}}" > {os.path.join(working_dir, "scancel_jobs.sh")}\n')
 
     os.chmod(output_script_path, 0o755)
     print(f"Batch submission script written to {output_script_path}")
