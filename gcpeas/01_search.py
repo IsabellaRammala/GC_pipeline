@@ -25,25 +25,9 @@ tmp_results_path10 = os.path.join(tmp_results_path, "search20min")
 peasoup_container = os.path.join(tmp_singularity_path, os.path.basename(params['peasoup_singularity']))
 dspsr_containers = os.path.join(tmp_singularity_path, os.path.basename(params['dspsr_singularity']))
 
-
 # --------------------------------------------------------------------------------
-#          SLURM COPY DATA TO PROCESSING NODE 
+#           RUNNING THE SEARCH PER BEAM
 # --------------------------------------------------------------------------------
-# copy_commands = gen.copy_data(tmp_base, 
-# 								tmp_data_path, 
-# 								tmp_results_path, 
-# 								data_path=os.path.join(params['data_dir'],params['epoch']),
-# 								epoch=params['epoch'],
-# 								pipeline_path=params['pipeline_dir'], 
-# 								singularity_path=params['singularity_dir']
-# 								)
-# print (copy_commands)
-# WRITE THE SLURM SCRIPT TO COPY DATA:
-# gen.write_slurm_copy_data(copy_commands, params, tmp_results_path, scripts_path)
-# COPY PRETTY SLOW (TIME for 2 beams real:7m37.617s, user:0m0.021s, sys:7m12.520s)
-# ESTIMATING ~4 hours for the 64 beams!!!
-
-
 
 # beams = sorted(glob.glob(os.path.join(tmp_data_path, 'cfbf*')))
 beams = sorted(glob.glob(os.path.join(data_path, 'cfbf*')))
@@ -89,17 +73,6 @@ for beam in beams: # MIGHT WANT TO COMBINE20, PROCESS, COPY THE RESULTS BACK, TH
 	gen.write_slurm_search_beam(peasoup_script_name, peasoup_command, params, beam_dir=beam, results_dir=tmp_results_path, scripts_path=tmp_scripts_path, working_dir=slurm_dir)
 
 
-	# filterbank_files = sorted(glob.glob(os.path.join(beam, "*to*")))
-	# peasoup_script_name = f"03_peasoup_search_{beam_id}.sh"
-	# for filterbank in filterbank_files:
-	# 	peasoup_command = gen.peasoup_command(working_dir=tmp_base, 
-	# 						singularity_path = peasoup_container, 
-	# 						results_dir=os.path.join(tmp_results_path, beam),
-	# 						params=params, 
-	# 						filterbank_file=filterbank)
-	# 	# print (peasoup_command)
-	# 	gen.write_slurm_search_beam(peasoup_script_name, peasoup_command, params, beam_dir=beam, results_dir=tmp_results_path, scripts_path=tmp_scripts_path, working_dir=slurm_dir)
-
 # ----------------------------------------------------------------------
 #           COPY THE RESULTS BACK TO /hercules/results
 # ----------------------------------------------------------------------
@@ -129,3 +102,10 @@ for beam in beams: # MIGHT WANT TO COMBINE20, PROCESS, COPY THE RESULTS BACK, TH
 								beam_name=beam_id, 
 								slurm_scripts_dir=tmp_scripts_path, 
 								working_dir=slurm_dir)
+
+# FROM THE MMGPS Meeting on 18 July 2025
+# PULSARX is currently doing better on RFI excercision on birdies and/or channel masklist 
+# GC DATA on Hercules is on a staging area (slow network - only 10 jobs max)
+# Recommendation - copy data from mandap to hercules/scratch
+# filtool jobs (only 10 jobs at a time) - that saves the data to /hercules/scratch
+# then copy those to tmp ()
