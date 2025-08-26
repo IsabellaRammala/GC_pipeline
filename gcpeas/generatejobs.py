@@ -5,6 +5,8 @@ import os
 import shutil
 import configparser  
 import glob
+import subprocess
+
 
 
 def preamble():
@@ -39,6 +41,7 @@ def read_config(config_file):
         "make_zaplist": config.get("PRESTO", "makezaplist"),
         "presto_singularity": config.get("PRESTO", "presto_singularity"),
         "peasoup_singularity": config.get("PEASOUP", "peasoup_singularity"),
+        "pulsarx_singularity": config.get("PULSARX", "pulsarx_singularity"),
         "filterbank_dir": config.get("PEASOUP", "filterbank_dir"),
         "results_dir": config.get("PEASOUP", "results_dir"),
         "scratch_dir": config.get("PEASOUP", "scratch_dir"),
@@ -48,13 +51,17 @@ def read_config(config_file):
         "acc_start": config.getfloat("PEASOUP", "acc_start"),
         "acc_end": config.getfloat("PEASOUP", "acc_end"),
         "nharmonics": config.getint("PEASOUP", "nharmonics"),
+        "fft_size": config.getfloat("PEASOUP", "fft_size"),
+        "limit": config.getfloat("PEASOUP", "limit"),
         "min_snr": config.getfloat("PEASOUP", "min_snr"),
+        "ram_limit_gb": config.getfloat("PEASOUP", "ram_limit_gb"),
         "parallel": config.getboolean("PEASOUP", "parallel"),
         "output_dir": config.get("PEASOUP", "output_dir"),
         "job_name": config.get("PEASOUP", "job_name"),
         "partition": config.get("PEASOUP", "partition"),
         "time": config.get("PEASOUP", "time"),
         "cpus": config.getint("PEASOUP", "cpus"),
+        "threads":config.get("PEASOUP", "threads"),
         "partition": config.get("SLURM", "partition"),
         "nodes": config.getint("SLURM", "nodes"),
         "ntasks": config.getint("SLURM", "ntasks"),
@@ -62,99 +69,127 @@ def read_config(config_file):
         "cpus-per-task": config.getint("SLURM", "cpus-per-task"),
         "mem": config.get("SLURM", "mem"),
         "time": config.get("SLURM", "time")
-    }
+        }
     return params
 
-# def combined_fil_file(fil1, fil2):
-#     """
-#     Given two filterbank file paths, generate a new name for the combined filterbank for be 
-#     generated from dspr
-#     """
-#     parts1 = fil1.split('/')[-1].split('_')
-#     parts2 = fil2.split('/')[-1].split('_')
-#     prefix = '_'.join(parts1[:2])
-#     start = parts1[2].replace('.fil', '')
-#     end = parts2[2].replace('.fil', '')
-#     combined_name = f"{prefix}_{start}_to_{end}.fil"
-#     return combined_name
 
 
-# def digifil_commands(beam, singularity_image, working_dir, output_dir=None, bits=8):
-#     """
-#     Given a directory containing 5-min filterbank files, generate digifil commands
-#     to create 10-min and 20-min versions.
-#     """
-#     # beam_path = Path(beam)
-#     output_path = output_dir if output_dir else beam
-
-#     # Sort files by name (assumes time ordering is encoded in filename)
-#     fil_files = sorted(glob.glob(os.path.join(beam, "*.fil")))
-
-#     if len(fil_files) < 2:
-#         raise ValueError("Need at least 2 .fil files to combine")
-
-#     half_cmd = []
-#     combined_file_names10 = []
-#     # Create 10-min file (2 combinations)
-#     for i in range(0, len(fil_files) - 1, 2):
-#         f1 = fil_files[i]
-#         f2 = fil_files[i + 1]
-#         combined_name_10 = combined_fil_file(f1, f2)
-#         combined_file_names10.append(combined_name_10)
-#         out_file = os.path.join(output_path, combined_name_10)
-#         cmd = f'singularity exec -B {working_dir} {singularity_image} digifil -cont -b {bits} -o {out_file} {f1} {f2}'
-#         half_cmd.append(cmd)
-    
-#     # Create a 20-min file (all combined)
-#     first_fil = fil_files[0]
-#     last_fil= fil_files[-1]
-#     combined_name_20 = combined_fil_file(first_fil, last_fil)
-#     out_file = os.path.join(output_path, combined_name_20)
-#     full_cmd = f'singularity exec -B {working_dir} {singularity_image} digifil -cont -b {bits} -o {out_file} {" ".join(fil_files)}'
-    
-
-#     return half_cmd, full_cmd
-
-
-# def setup_directories(epoch, user_id, pipeline_path, singularity_path):
-#     """
-#     Sets up the input and output directories
-#     """
-#     # EVENTUALLY NEED TO GET THE USER AND TMP ENV DIRECTLY FROM BASH!!!
-#     scripts_path = os.path.join(pipeline_path, "SCRIPTS")
-#     tmp_base = os.path.join("/tmp", user_id)
-#     destination_dir_name = "DATA"
-#     tmp_data_path = os.path.join(tmp_base, destination_dir_name, epoch)
-#     tmp_pipeline_path = os.path.join(tmp_base, os.path.basename(pipeline_path))
-#     tmp_singularity_path = os.path.join(tmp_base, os.path.basename(singularity_path))
-#     tmp_scripts_path = os.path.join(tmp_pipeline_path, os.path.basename(scripts_path))
-#     tmp_results_path = os.path.join(tmp_base, ("RESULTS"))
-#     # data_path = os.path.join(origin_dir, epoch)
-#     return tmp_base, tmp_data_path, tmp_results_path, tmp_scripts_path, tmp_singularity_path, tmp_pipeline_path, scripts_path
-    
-    import os
-
-def setup_directories(epoch, user_id, pipeline_path, singularity_path):
+def setup_directories(input_dir, output_dir, verbose=True):
     """
-    Sets up and creates the input and output directories.
+    Sets up and creates working directories on local and processing nodes.
     """
-    scripts_path = os.path.join(pipeline_path, "SCRIPTS")
-    tmp_base = os.path.join("/tmp", user_id)
-    destination_dir_name = "DATA"
+    # scripts_path = os.path.join(pipeline_path, "SCRIPTS")
+    # tmp_base = os.path.join("/tmp", user_id)
+    # destination_dir_name = "DATA"
     
-    tmp_data_path = os.path.join(tmp_base, destination_dir_name, epoch)
-    tmp_pipeline_path = os.path.join(tmp_base, os.path.basename(pipeline_path))
-    tmp_singularity_path = os.path.join(tmp_base, os.path.basename(singularity_path))
-    tmp_scripts_path = os.path.join(tmp_pipeline_path, os.path.basename(scripts_path))
-    tmp_results_path = os.path.join(tmp_base, "RESULTS")
+    # tmp_data_path = os.path.join(tmp_base, destination_dir_name, epoch)
+    # tmp_pipeline_path = os.path.join(tmp_base, os.path.basename(pipeline_path))
+    # tmp_singularity_path = os.path.join(tmp_base, os.path.basename(singularity_path))
+    # tmp_scripts_path = os.path.join(tmp_pipeline_path, os.path.basename(scripts_path))
+    # tmp_results_path = os.path.join(tmp_base, "RESULTS")
 
-    os.makedirs(tmp_data_path, exist_ok=True)
-    os.makedirs(tmp_pipeline_path, exist_ok=True)
-    os.makedirs(tmp_singularity_path, exist_ok=True)
-    os.makedirs(tmp_scripts_path, exist_ok=True)
-    os.makedirs(tmp_results_path, exist_ok=True)
+    # os.makedirs(tmp_data_path, exist_ok=True)
+    # os.makedirs(tmp_pipeline_path, exist_ok=True)
+    # os.makedirs(tmp_singularity_path, exist_ok=True)
+    # os.makedirs(tmp_scripts_path, exist_ok=True)
+    # os.makedirs(tmp_results_path, exist_ok=True)
 
-    return tmp_base, tmp_data_path, tmp_results_path, tmp_scripts_path, tmp_singularity_path, tmp_pipeline_path, scripts_path
+    # return tmp_base, tmp_data_path, tmp_results_path, tmp_scripts_path, tmp_singularity_path, tmp_pipeline_path, scripts_path
+    
+    # SETUP LOCAL DIRECTORIES
+    if verbose:
+        print ("------------------------------------------------------------")
+        print ("                SETTING  UP DIRECTORIES                     ")
+        print ("------------------------------------------------------------")
+
+    INPUT_DIR = os.path.abspath(input_dir)
+    OUTPUT_DIR = os.path.abspath(output_dir)
+
+    BEAM = os.path.basename(INPUT_DIR)
+    EPOCH = os.path.basename(os.path.dirname(INPUT_DIR))  
+    POINTING = os.path.basename(os.path.dirname(os.path.dirname(INPUT_DIR)))
+
+    RESULTS_DIR = os.path.join(OUTPUT_DIR, EPOCH, POINTING, BEAM)
+    os.makedirs(RESULTS_DIR, exist_ok=True)
+
+    # MIRROR THE PATHS ONTO THE PROCESSING NODE
+    BASE_TMPDIR = os.environ.get("TMPDIR", "/tmp")
+    TMP_DIR = os.path.join(BASE_TMPDIR, EPOCH)
+    os.makedirs(TMP_DIR, exist_ok=True)
+
+    # # CREATE CONTAINERS AND PIPELINE DIRECTORIES ONTO THE NODE
+    # PIPELINE_DIR = os.path.join(BASE_TMPDIR, "PIPELINES")
+    # CONTAINERS_DIR = os.path.join(BASE_TMPDIR, "CONTAINERS")
+    # os.makedirs(PIPELINE_DIR, exist_ok=True)
+    # os.makedirs(CONTAINERS_DIR, exist_ok=True)
+
+    if verbose:
+        print (f"Input directory: {INPUT_DIR}")
+        print (f"Data will be processed on {TMP_DIR}")
+        print (f"Results will be moved to {OUTPUT_DIR}")
+        # print (f"Pipeline on NODE: {PIPELINE_DIR}")
+        # print (f"Containers on NODE: {CONTAINERS_DIR}")
+
+    return INPUT_DIR, RESULTS_DIR, OUTPUT_DIR, TMP_DIR, POINTING, BEAM, 
+
+def copy_data_to_node(input_dir, tmp_dir, beam, pipeline, containers, verbose):
+    # COPY THE DATA, pipelines, and containers TO THE PROCESSING NODE
+    if verbose:
+        print ("------------------------------------------------------------")
+        print ("                  COPY DATA TO PCROCESSING NODE             ")
+        print ("------------------------------------------------------------")
+    tmp_beam_dir = os.path.join(tmp_dir, beam)
+    tmp_containers_dir = os.path.join(tmp_dir, "CONTAINERS")
+    tmp_pipelines_dir = os.path.join(tmp_dir, "PIPELINES")
+    tmp_results_dir = os.path.join(tmp_dir, "RESULTS")
+
+    os.makedirs(tmp_containers_dir, exist_ok=True)
+    os.makedirs(tmp_results_dir, exist_ok=True)
+    # os.makedirs(tmp_pipelines_dir, exist_ok=True)
+    
+    if verbose:
+        print (f"Copying Singularity containers {containers} to {tmp_containers_dir}...")
+    for container in containers:
+        shutil.copy2(container, tmp_containers_dir)
+
+    if verbose:
+        print (f"Copying Pipeline {pipeline} to {tmp_pipelines_dir}...")
+    shutil.copytree(pipeline, tmp_pipelines_dir)
+    if verbose:
+        print (f"Copying beam from {input_dir} to {tmp_beam_dir}...")
+
+    if not os.path.exists(tmp_beam_dir):
+        shutil.copytree(input_dir, tmp_beam_dir)
+    else:
+        print(f"{tmp_beam_dir} already exists, skipping copy")
+
+    if os.path.isdir(tmp_beam_dir) and os.listdir(tmp_beam_dir):
+        print(f"Files successfully copied to {tmp_beam_dir}:")
+        for f in os.listdir(tmp_beam_dir):
+            print("  ", f)
+    return tmp_beam_dir, tmp_containers_dir, tmp_pipelines_dir, tmp_results_dir
+
+def run_filtool(input_dir, output_dir, pulsarx_sif, filplan):
+    fil_files = sorted(glob.glob(os.path.join(input_dir, "*.fil")))
+    print ("------------------------------------------------------------")
+    print ("                   RUNNING FILTOOL                          ")
+    print ("------------------------------------------------------------")
+    cmd = [
+        "singularity", "exec", 
+        #"-B", f"{os.getcwd()},/mandap,/hercules/results/isara,/u/isara",
+        pulsarx_sif,
+        "filtool", "-v",
+        "--filplan", filplan,
+        "-o", output_dir,
+        "-f"
+    ] + fil_files  
+    print(f"[INFO] Command: {' '.join(cmd)}")
+    try:
+        print (fil_files)
+        subprocess.run(cmd, check=True)
+    except subprocess.CalledProcessError as e:
+        print(f"[ERROR] filtool failed: {e}")
+
 
 # def find_filterbank_files(directory):
 #     """
@@ -170,36 +205,35 @@ def setup_directories(epoch, user_id, pipeline_path, singularity_path):
 #         raise IOError("No filterbank files found in directory {}.".format(directory))
 #     return filterbank_files
 
-def peasoup_command(working_dir, singularity_path, results_dir, params, filterbank_file):
+def run_peasoup(peasoup_sif, results_dir, params, filterbank_file):
     """
     Generates the PEASOUP command string based on the provided parameters,
     """
-    command = (
-        "singularity exec -B {working_dir} {singularity_path} peasoup "
-        "-i {filterbank_file} "
-        "-o {output_prefix} "
-        "--dm_start {dm_start} --dm_end {dm_end} "
-        "--acc_start {acc_start} --acc_end {acc_end} "
-        "--nharmonics {nharmonics} --min_snr {min_snr} "
-        "--sta"
-    ).format(
-        working_dir=working_dir,
-        filterbank_dir=params["epoch"],
-        singularity_path=singularity_path,
-        filterbank_file=filterbank_file,
-        output_prefix=results_dir,
-        dm_start=params["dm_start"],
-        dm_end=params["dm_end"],
-        acc_start=params["acc_start"],
-        acc_end=params["acc_end"],
-        nharmonics=params["nharmonics"],
-        min_snr=params["min_snr"]
-    )
+    command = [
+        "singularity", "exec", "--nv",
+        peasoup_sif,
+        "peasoup",
+        "-i", filterbank_file,
+        "-o", results_dir,
+        "--dm_start", str(params["dm_start"]),
+        "--dm_end", str(params["dm_end"]),
+        "--acc_start", str(params["acc_start"]),
+        "--acc_end", str(params["acc_end"]),
+        "--nharmonics", str(params["nharmonics"]),
+        "--min_snr", str(params["min_snr"]),
+        "--ram_limit_gb", str(params["ram_limit_gb"]),
+        "--fft_size", str(int(params["fft_size"])),
+        "--limit", str(int(params["limit"])),
+        "-t", str(int(params["threads"])), 
+        "-v"
+    ]
 
-    if params["parallel"]:
-        command += "-p"
-    # print(command)
-    return command
+    try:
+        print(f"[INFO] Command: {' '.join(command)}")
+        subprocess.run(command, check=True)
+    except subprocess.CalledProcessError as e:
+        print(f"[ERROR] Peasoup failed: {e}")
+    
 
 # def copy_data(tmp_base, tmp_data_path, tmp_results_path, data_path, epoch, pipeline_path, singularity_path):
 #     """
@@ -226,37 +260,34 @@ def peasoup_command(working_dir, singularity_path, results_dir, params, filterba
 
 #     return copy_commands 
 
-import os
-import shutil
-
-def copy_data(tmp_base, tmp_data_path, tmp_results_path, data_path, epoch, pipeline_path, singularity_path):
-    """
-    Copy the data, pipeline, and container to the processing node using shutil.
-    Assumes necessary directories except tmp_data_path are already created.
-    """
-    if not os.path.exists(data_path):
-        raise FileNotFoundError(f"Data directory not found: {data_path}")
+# def copy_data(tmp_base, tmp_data_path, tmp_results_path, data_path, epoch, pipeline_path, singularity_path):
+#     """
+#     Copy the data, pipeline, and container to the processing node using shutil.
+#     Assumes necessary directories except tmp_data_path are already created.
+#     """
+#     if not os.path.exists(data_path):
+#         raise FileNotFoundError(f"Data directory not found: {data_path}")
     
-    if os.path.exists(tmp_data_path):
-        print(f"[INFO] Data already exists in /tmp: {tmp_data_path}")
-        return []  
+#     if os.path.exists(tmp_data_path):
+#         print(f"[INFO] Data already exists in /tmp: {tmp_data_path}")
+#         return []  
 
-    # COPY DATA
-    shutil.copytree(data_path, tmp_data_path)
+#     # COPY DATA
+#     shutil.copytree(data_path, tmp_data_path)
 
-    # COPY PIPELINE
-    pipeline_dest = os.path.join(tmp_base, os.path.basename(pipeline_path))
-    if not os.path.exists(pipeline_dest):
-        shutil.copytree(pipeline_path, pipeline_dest)
+    # # COPY PIPELINE
+    # pipeline_dest = os.path.join(tmp_base, os.path.basename(pipeline_path))
+    # if not os.path.exists(pipeline_dest):
+    #     shutil.copytree(pipeline_path, pipeline_dest)
 
-    # COPY CONTAINERS
-    singularity_dest = os.path.join(tmp_base, os.path.basename(singularity_path))
-    if os.path.isdir(singularity_path):
-        if not os.path.exists(singularity_dest):
-            shutil.copytree(singularity_path, singularity_dest)
-    else:
-        if not os.path.exists(singularity_dest):
-            shutil.copy2(singularity_path, singularity_dest)
+    # # COPY CONTAINERS
+    # singularity_dest = os.path.join(tmp_base, os.path.basename(singularity_path))
+    # if os.path.isdir(singularity_path):
+    #     if not os.path.exists(singularity_dest):
+    #         shutil.copytree(singularity_path, singularity_dest)
+    # else:
+    #     if not os.path.exists(singularity_dest):
+    #         shutil.copy2(singularity_path, singularity_dest)
 
 
 # def copy_results(tmp_results_dir, results_dir):
