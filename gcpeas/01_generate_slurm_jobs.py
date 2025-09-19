@@ -33,11 +33,14 @@ with open(beam_list_file) as f:
 
         # Create a job name based on beam folder name
         beam_name = os.path.basename(beam_path)
+        epoch = beam_path.split('/')[-2]
         script_name = "{}_search.sh".format(beam_name)
         jobname = "{}".format(beam_name[:4] + beam_name[-3:])
         script_content = template.format(jobname=jobname, beam_path=beam_path)
+        epoch_dir = os.path.join(output_dir, epoch)
+        os.makedirs(epoch_dir, exist_ok=True)
 
-        script_path = os.path.join(output_dir, script_name)
+        script_path = os.path.join(epoch_dir, script_name)
         print(f"sbatch {script_path}")
         
         with open(script_path, "w") as sf:

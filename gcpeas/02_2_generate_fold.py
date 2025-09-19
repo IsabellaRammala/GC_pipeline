@@ -3,8 +3,8 @@ import os
 import glob
 
 # Directory to the beams
-beam_pattern = "/hercules/results/isara/20240321_094530/gc00/cfbf*"
-
+beam_pattern = "/hercules/results/isara/20240321_*/gc00/cfbf*"
+#beam_pattern = "/hercules/results/isara/20240321_061310/cfbf00022_withkdf_rightepoch/withkdf_DM_100_2000*"
 
 pulsarx_img = "/u/isara/CONTAINERS/pulsarx_latest.sif"
 meerkat_fold_template = "/u/isara/SOFTWARES/gcpeas/gcpeas_nongit/gcpeas/meerkat_fold_S4.template"

@@ -7,7 +7,7 @@ import xml.etree.ElementTree as ET
 LIGHT_SPEED = 2.99792458e8  
 
 # beam directories
-beam_pattern = "/hercules/results/isara/20240321_094530/gc00/cfbf*"
+beam_pattern = "/hercules/results/isara/20240321_*/gc00/cfbf*"
 
 def extract_peasoup_cands(xml_file, outfile, LIGHT_SPEED):
     tree = ET.parse(xml_file)
