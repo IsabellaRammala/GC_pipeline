@@ -3,7 +3,7 @@ import glob
 import subprocess
 
 # find all generated PSRFOLD SLURM scripts
-slurm_scripts = "/hercules/results/isara/20240321_094530/gc00/cfbf0*/*_psrfold.sh"
+slurm_scripts = "/hercules/results/isara/20240321_*/gc00/cfbf0*/*_psrfold.sh"
 
 for script_path in sorted(glob.glob(slurm_scripts)):
     try:
@@ -11,3 +11,4 @@ for script_path in sorted(glob.glob(slurm_scripts)):
         print(f"Submitted: {script_path}")
     except subprocess.CalledProcessError as e:
         print(f"Failed to submit {script_path}: {e}")
+        
