@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 import os
 
-beam_list_file = "/u/isara/SOFTWARES/gcpeas/gcpeas_nongit/gcpeas/data/20240321_094530_data.txt"  
-
-output_dir = "/u/isara/SOFTWARES/gcpeas/gcpeas_nongit/gcpeas/SCRIPTS/search_20240321"
+# beam_list_file = "/u/isara/pipeline_runs/20241207/gcpeas/20241207_fromArchiv.txt"  
+beam_list_file = "/u/isara/SOFTWARES/gcpeas/gcpeas_nongit/gcpeas/data/20241207_fromArchiv.txt"
+output_dir = "/u/isara/SOFTWARES/gcpeas/gcpeas_nongit/gcpeas/SCRIPTS/20241207_fromArchiv"
 os.makedirs(output_dir, exist_ok=True)
 
 # SLURM job template
@@ -11,16 +11,16 @@ template = """#!/usr/bin/env bash
 #SBATCH --job-name={jobname}
 #SBATCH --partition=gpu.q
 #SBATCH --gres=gpu:3
-#SBATCH --cpus-per-task=12
-#SBATCH --mem=120G
+#SBATCH --cpus-per-task=24
+#SBATCH --mem=370G
 #SBATCH --output={jobname}.out
 #SBATCH --error={jobname}.err
 
 SECONDS=0
 
-export APPTAINER_BINDPATH=$PWD,/mandap,/hercules/scratch/isara,/u/isara
+export APPTAINER_BINDPATH=$PWD,/mandap,/hercules/results/isara,/hercules/scratch/isara,/u/isara
 
-python3 0_clean.py -v {beam_path}
+python3 -u 0_clean.py -v {beam_path}
 
 echo "****ELAPSED "$SECONDS" $SLURM_JOB_ID"
 """
@@ -31,7 +31,7 @@ with open(beam_list_file) as f:
         if not beam_path:
             continue
 
-        # Create a job name based on beam folder name
+        # Create a job name based on beam name
         beam_name = os.path.basename(beam_path)
         epoch = beam_path.split('/')[-2]
         script_name = "{}_search.sh".format(beam_name)

@@ -3,8 +3,9 @@ import os
 import glob
 
 # Directory to the beams
-beam_pattern = "/hercules/results/isara/20240321_*/gc00/cfbf*"
+# beam_pattern = "/hercules/results/isara/20240321_*/gc00/cfbf*"
 #beam_pattern = "/hercules/results/isara/20240321_061310/cfbf00022_withkdf_rightepoch/withkdf_DM_100_2000*"
+beam_pattern = "/hercules/scratch/isara/20250919_test/cfbf*"
 
 pulsarx_img = "/u/isara/CONTAINERS/pulsarx_latest.sif"
 meerkat_fold_template = "/u/isara/SOFTWARES/gcpeas/gcpeas_nongit/gcpeas/meerkat_fold_S4.template"
@@ -78,8 +79,8 @@ for beam_dir in sorted(glob.glob(beam_pattern)):
         continue
     fil_files = glob.glob(os.path.join(beam_dir, "*.fil"))
     cand_files = glob.glob(os.path.join(beam_dir, "*_pulsarx.cands"))
-    xml_files = glob.glob(os.path.join(beam_dir, "overview.xml"))
-
+    xml_files = glob.glob(os.path.join(beam_dir, "*.xml"))
+    
     if not fil_files:
         print(f"Skipping {beam_dir}: no .fil file found")
         continue

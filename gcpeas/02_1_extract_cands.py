@@ -7,7 +7,9 @@ import xml.etree.ElementTree as ET
 LIGHT_SPEED = 2.99792458e8  
 
 # beam directories
-beam_pattern = "/hercules/results/isara/20240321_*/gc00/cfbf*"
+# beam_pattern = "/hercules/results/isara/20240321_*/gc00/cfbf*"
+beam_pattern = "/hercules/scratch/isara/20250919_test/peasoup_xml/dm*"
+
 
 def extract_peasoup_cands(xml_file, outfile, LIGHT_SPEED):
     tree = ET.parse(xml_file)
@@ -36,7 +38,7 @@ if __name__ == "__main__":
         if not os.path.isdir(beam_dir):
             continue
 
-        xml_files = glob.glob(os.path.join(beam_dir, "overview.xml"))
+        xml_files = glob.glob(os.path.join(beam_dir, "*overview*.xml"))
         if not xml_files:
             print(f"Skipping {beam_dir}: no overview.xml found")
             continue

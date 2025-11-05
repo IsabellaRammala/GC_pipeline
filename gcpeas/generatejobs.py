@@ -224,8 +224,7 @@ def run_peasoup(peasoup_sif, results_dir, params, filterbank_file):
         "--ram_limit_gb", str(params["ram_limit_gb"]),
         "--fft_size", str(int(params["fft_size"])),
         "--limit", str(int(params["limit"])),
-        "-t", str(int(params["threads"])), 
-        "-v"
+        "-t", str(int(params["threads"])) 
     ]
 
     try:
