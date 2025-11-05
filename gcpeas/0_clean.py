@@ -15,7 +15,7 @@ def parse_user_options():
     parser.add_argument("beam_path", help="Path to the beam with filterbank files")
     
     # Optional arguments
-    parser.add_argument("-o", "--output_path", default="/hercules/results/isara/", help="Path to the results directory (default: /hercules/results/isara/TRAPUM)")
+    parser.add_argument("-o", "--output_path", default="/hercules/results/isara/RESULTS", help="Path to the results directory (default: /hercules/results/isara/RESULTS")
     parser.add_argument("-c", "--config", default="/u/isara/SOFTWARES/gcpeas/gcpeas_nongit/gcpeas/config.ini", help="Path to the config file (default: SOFTWARES/gcpeas/gcpeas_nongit/gcpeas/config.ini)")
     parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose output")
     # parser.add_argument("-n", "--num_iterations", type=int, default=10, help="Number of iterations (default: 10)")
@@ -57,7 +57,7 @@ def main(beam_path, results_path, config_path, verbose):
     gen.run_filtool(TMP_BEAM_DIR, cleaned_beam_prefix, pulsarx_path, filplan)
 
     # --------------------------------------------------------------------------------
-    #           SEARCH THE CLEANED 20 MIN FILTERBANK FILE 
+    #           SEARCH THE CLEANED FILTERBANK FILE 
     # --------------------------------------------------------------------------------
     # xml_prefix = f"{beam_id}_20min_search"
     xml_path = os.path.join(TMP_RESULTS_DIR)#, xml_prefix)
@@ -67,6 +67,10 @@ def main(beam_path, results_path, config_path, verbose):
     print("--------------------------------------------------------------------------------")
     print("           MOVE THE RESULTS TO LOCAL SCRATCH                                    ")
     print("--------------------------------------------------------------------------------")
+    # Deleting the cleaned beam to save space
+    print(f"Deleting temporary beam directory: {cleaned_beam}")
+    shutil.rmtree(cleaned_beam)
+
     print(f"Moving {TMP_RESULTS_DIR} to {RESULTS_DIR}") 
     if os.path.exists(RESULTS_DIR):
         shutil.rmtree(RESULTS_DIR) 
