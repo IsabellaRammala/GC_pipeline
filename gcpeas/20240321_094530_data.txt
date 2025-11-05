@@ -69,7 +69,6 @@
 /mandap/incoming/meertrans/tapeStaging/29505/TRAPUM/SCI-20200703-MK-05/gc00/20240321_061310/cfbf00007
 /mandap/incoming/meertrans/tapeStaging/29506/TRAPUM/SCI-20200703-MK-05/gc00/20240321_061310/cfbf00008
 /mandap/incoming/meertrans/tapeStaging/29507/TRAPUM/SCI-20200703-MK-05/gc00/20240321_061310/cfbf00021
-/mandap/incoming/meertrans/tapeStaging/29508/TRAPUM/SCI-20200703-MK-05/gc00/20240321_061310/cfbf00022
 /mandap/incoming/meertrans/tapeStaging/29509/TRAPUM/SCI-20200703-MK-05/gc00/20240321_061310/cfbf00023
 /mandap/incoming/meertrans/tapeStaging/29510/TRAPUM/SCI-20200703-MK-05/gc00/20240321_061310/cfbf00024
 /mandap/incoming/meertrans/tapeStaging/29511/TRAPUM/SCI-20200703-MK-05/gc00/20240321_061310/cfbf00025
